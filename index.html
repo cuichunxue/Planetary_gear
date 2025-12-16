@@ -171,6 +171,14 @@
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
+  <!-- SMAA高品質アンチエイリアシング -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/SMAAPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/SMAAShader.js"></script>
+
   <script>
     // ============================================================
     // ギヤパラメータ（物理的に正確）
@@ -221,6 +229,7 @@
     // Three.js オブジェクト
     // ============================================================
     let scene, camera, renderer, controls, axesHelper;
+    let composer, smaaPass; // SMAA用ポストプロセッシング
     let sunMesh, ringMesh, carrierGroup;
     let planetMeshes = [];
     let carrierArms = [];
@@ -480,6 +489,22 @@
       ringAccentLight.distance = 12;
       scene.add(ringAccentLight);
 
+      // SMAA高品質アンチエイリアシング（ストロボ効果軽減）
+      composer = new THREE.EffectComposer(renderer);
+
+      // 通常のレンダリングパス
+      const renderPass = new THREE.RenderPass(scene, camera);
+      composer.addPass(renderPass);
+
+      // SMAAパス - エッジの滑らかさを向上（振動感を軽減）
+      const pixelRatio = renderer.getPixelRatio();
+      smaaPass = new THREE.SMAAPass(
+        window.innerWidth * pixelRatio,
+        window.innerHeight * pixelRatio
+      );
+      smaaPass.renderToScreen = true;
+      composer.addPass(smaaPass);
+
       // グリッド
       const grid = new THREE.GridHelper(24, 24, 0x444444, 0x222222);
       grid.position.y = -2.5;
@@ -502,6 +527,11 @@
         camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(innerWidth, innerHeight);
+
+        // ComposerとSMAAパスもリサイズ
+        composer.setSize(innerWidth, innerHeight);
+        const pixelRatio = renderer.getPixelRatio();
+        smaaPass.setSize(innerWidth * pixelRatio, innerHeight * pixelRatio);
       });
     }
 
@@ -1098,7 +1128,7 @@
       }
 
       controls.update();
-      renderer.render(scene, camera); // 通常レンダリング
+      composer.render(); // SMAA付き高品質レンダリング
     }
 
     // ============================================================
