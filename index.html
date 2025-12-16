@@ -142,8 +142,8 @@
     </div>
 
     <div style="margin:12px 0">
-      <label>モーションブラー強度 <span class="val" id="blurTxt">85%</span></label>
-      <input id="blurSlider" type="range" min="0" max="95" step="5" value="85">
+      <label>モーションブラー強度 <span class="val" id="blurTxt">50%</span></label>
+      <input id="blurSlider" type="range" min="0" max="80" step="5" value="50">
     </div>
 
     <div class="btns">
@@ -501,7 +501,7 @@
       composer.addPass(renderPass);
 
       // 残像効果（モーションブラー）- 振動感を軽減
-      afterimagePass = new THREE.AfterimagePass(0.85); // 0.85 = 強めの残像効果
+      afterimagePass = new THREE.AfterimagePass(0.5); // 0.5 = 適度な残像効果
       composer.addPass(afterimagePass);
 
       // 最終出力パス
