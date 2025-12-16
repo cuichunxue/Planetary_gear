@@ -142,8 +142,8 @@
     </div>
 
     <div style="margin:12px 0">
-      <label>モーションブラー強度 <span class="val" id="blurTxt">50%</span></label>
-      <input id="blurSlider" type="range" min="0" max="80" step="5" value="50">
+      <label>モーションブラー強度 <span class="val" id="blurTxt">0%</span></label>
+      <input id="blurSlider" type="range" min="0" max="70" step="5" value="0">
     </div>
 
     <div class="btns">
@@ -493,15 +493,15 @@
       ringAccentLight.distance = 12;
       scene.add(ringAccentLight);
 
-      // ポストプロセッシング：モーションブラー（残像効果）
+      // ポストプロセッシング：オプショナル（デフォルトOFF）
       composer = new THREE.EffectComposer(renderer);
 
       // 通常のレンダリングパス
       const renderPass = new THREE.RenderPass(scene, camera);
       composer.addPass(renderPass);
 
-      // 残像効果（モーションブラー）- 振動感を軽減
-      afterimagePass = new THREE.AfterimagePass(0.5); // 0.5 = 適度な残像効果
+      // 残像効果（モーションブラー）- デフォルトで無効
+      afterimagePass = new THREE.AfterimagePass(0.0); // 0.0 = オフ
       composer.addPass(afterimagePass);
 
       // 最終出力パス
