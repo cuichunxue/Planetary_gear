@@ -520,16 +520,22 @@
       sunMesh.add(sunWire);
       wireframeObjects.push(sunWire);
       
-      // リングギヤ
+      // リングギヤ（視認性を改善したマテリアル）
       const ringShape = buildInvoluteGearProfile(rRing, Zr, true);
       const ringGeo = extrudeGear(ringShape);
+
+      // ジオメトリを最適化
+      ringGeo.computeVertexNormals();  // 法線を再計算
+      ringGeo.normalizeNormals();      // 法線を正規化
+
       ringMesh = new THREE.Mesh(
         ringGeo,
         new THREE.MeshStandardMaterial({
-          color: 0x8b4789,
-          metalness: 0.35,
-          roughness: 0.35,
-          side: THREE.DoubleSide
+          color: 0x9b59b6,        // より鮮やかな紫色
+          metalness: 0.6,         // メタリック感を強調
+          roughness: 0.2,         // 滑らかな表面
+          side: THREE.DoubleSide,
+          flatShading: false      // スムーズシェーディング
         })
       );
       ringMesh.castShadow = true;
@@ -538,25 +544,29 @@
       
       const ringWire = new THREE.LineSegments(
         new THREE.EdgesGeometry(ringGeo),
-        new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 })
+        new THREE.LineBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.5,  // ワイヤーフレームを少し濃くして視認性向上
+          linewidth: 2
+        })
       );
       ringMesh.add(ringWire);
       wireframeObjects.push(ringWire);
 
-      // リングギヤの回転を視覚化するマーカーを追加
+      // リングギヤの回転を視覚化するマーカー（デバッグ用・非表示）
       const markerGeo = new THREE.BoxGeometry(0.3, gearThickness * 1.2, 0.3);
       const markerMat = new THREE.MeshStandardMaterial({
-        color: 0xff0000,  // 赤色
+        color: 0xff0000,
         emissive: 0xff0000,
         emissiveIntensity: 0.5,
         metalness: 0.8,
         roughness: 0.2
       });
       const marker = new THREE.Mesh(markerGeo, markerMat);
-      marker.position.set(rRing, 0, 0); // リングの外側に配置
+      marker.position.set(rRing, 0, 0);
+      marker.visible = false; // デバッグ完了のため非表示
       ringMesh.add(marker);
-
-      console.log(`[buildGears] リングギヤにマーカー追加 - 位置: (${rRing}, 0, 0)`);
       
       // キャリアとプラネットギヤ
       carrierGroup = new THREE.Group();
@@ -956,27 +966,42 @@
     });
 
     // ============================================================
-    // アニメーションループ（完全再構築版）
+    // アニメーションループ（完全再構築版 + FPS監視）
     // ============================================================
-    let frameCount = 0; // デバッグ用フレームカウンタ
+    let frameCount = 0;
+    let fpsHistory = [];
+    let lastFpsReport = 0;
 
     function animate() {
       requestAnimationFrame(animate);
 
       if (running) {
         const currentTime = performance.now();
-        let dt = 1 / 60; // デフォルトは60FPS
+        let dt = 1 / 60;
 
         // 初回フレームの処理
         if (isFirstFrame) {
           lastTime = currentTime;
           isFirstFrame = false;
-          dt = 1 / 60; // 初回は固定値を使用
+          dt = 1 / 60;
           console.log(`[animate] 初回フレーム - lastTime初期化: ${lastTime.toFixed(2)}ms`);
         } else {
           // 通常フレームの処理
           const rawDt = (currentTime - lastTime) / 1000;
           lastTime = currentTime;
+
+          // FPS計算（1秒ごとに平均FPSを報告）
+          const fps = rawDt > 0 ? 1 / rawDt : 60;
+          fpsHistory.push(fps);
+
+          if (currentTime - lastFpsReport > 1000) {
+            const avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+            if (avgFps < 55) {
+              console.warn(`[FPS] 低FPS検出: ${avgFps.toFixed(1)} FPS（目標: 60 FPS）`);
+            }
+            fpsHistory = [];
+            lastFpsReport = currentTime;
+          }
 
           // dt の妥当性チェック（0.001秒〜0.1秒の範囲）
           if (rawDt > 0 && rawDt < 0.1 && isFinite(rawDt)) {
