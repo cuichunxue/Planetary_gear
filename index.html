@@ -630,6 +630,7 @@
           // リング固定（最も一般的な減速機）
           // ωs·Zs = ωc·(Zs + Zr)
           // ωc = (ωs·Zs) / (Zs + Zr)
+          ringSpeed = 0;
           if (lastChanged === "sun") {
             carrierSpeed = (sunSpeed * Zs) / (Zs + Zr);
           } else {
@@ -639,6 +640,7 @@
           // サン固定（増速機）
           // ωr·Zr = ωc·(Zs + Zr)
           // ωc = (ωr·Zr) / (Zs + Zr)
+          sunSpeed = 0;
           if (lastChanged === "ring") {
             carrierSpeed = (ringSpeed * Zr) / (Zs + Zr);
           } else {
@@ -648,6 +650,7 @@
           // キャリア固定（方向転換機）
           // ωs·Zs + ωr·Zr = 0
           // ωr = -(ωs·Zs) / Zr
+          carrierSpeed = 0;
           if (lastChanged === "sun") {
             ringSpeed = -(sunSpeed * Zs) / Zr;
           } else {
@@ -655,24 +658,36 @@
           }
         }
       } else {
-        // ロックなし → Willis式から残りを計算
-        if (lastChanged === "sun" && ringSpeed !== 0) {
-          // サンとリングから キャリアを計算
-          carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
-        } else if (lastChanged === "ring" && sunSpeed !== 0) {
-          // リングとサンから キャリアを計算
-          carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
-        } else if (lastChanged === "car") {
-          // キャリアから他を計算（どちらか一方を固定）
-          // デフォルトでリングを計算
-          if (sunSpeed !== 0) {
-            ringSpeed = (carrierSpeed * (Zs + Zr) - sunSpeed * Zs) / Zr;
+        // ロックなし → Willis式から3つ目の値を計算
+        // 常にWillis式: ωs·Zs + ωr·Zr = ωc·(Zs + Zr) を満たす
+        if (lastChanged === "sun") {
+          // サンが変更された → リングが設定済みならキャリアを計算、そうでなければリングを計算
+          if (Math.abs(ringSpeed) > 0.01 || ringSpeed !== 0) {
+            carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
           } else {
+            // リングがゼロなら、キャリアから計算
+            ringSpeed = (carrierSpeed * (Zs + Zr) - sunSpeed * Zs) / Zr;
+          }
+        } else if (lastChanged === "ring") {
+          // リングが変更された → サンが設定済みならキャリアを計算、そうでなければサンを計算
+          if (Math.abs(sunSpeed) > 0.01 || sunSpeed !== 0) {
+            carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
+          } else {
+            // サンがゼロなら、キャリアから計算
             sunSpeed = (carrierSpeed * (Zs + Zr) - ringSpeed * Zr) / Zs;
           }
-        } else {
-          // デフォルト: キャリアを計算
-          carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
+        } else if (lastChanged === "car") {
+          // キャリアが変更された → Willis式から他の一方を計算
+          // サンがゼロでなければリングを計算、そうでなければサンを計算
+          if (Math.abs(sunSpeed) > 0.01) {
+            ringSpeed = (carrierSpeed * (Zs + Zr) - sunSpeed * Zs) / Zr;
+          } else if (Math.abs(ringSpeed) > 0.01) {
+            sunSpeed = (carrierSpeed * (Zs + Zr) - ringSpeed * Zr) / Zs;
+          } else {
+            // 両方ゼロの場合、適当に分配（直結として）
+            ringSpeed = carrierSpeed;
+            sunSpeed = carrierSpeed;
+          }
         }
       }
     }
@@ -700,14 +715,33 @@
       statCar.textContent = carrierSpeed.toFixed(1) + " RPM";
       statPlanet.textContent = calculatePlanetSelfRotation().toFixed(1) + " RPM";
       
-      // 減速比計算
+      // 減速比計算（入力/出力）
       const epsilon = 0.1;
-      if (Math.abs(carrierSpeed) > epsilon && Math.abs(sunSpeed) > epsilon) {
-        const ratio = Math.abs(sunSpeed / carrierSpeed);
-        statRatio.textContent = ratio.toFixed(2) + ":1";
-        statTorque.textContent = ratio.toFixed(2) + "x";
-      } else if (Math.abs(ringSpeed) > epsilon && Math.abs(carrierSpeed) > epsilon) {
-        const ratio = Math.abs(ringSpeed / carrierSpeed);
+      
+      // どれが入力でどれが出力かを判定
+      let inputSpeed = 0;
+      let outputSpeed = 0;
+      
+      if (ringLocked) {
+        // 減速モード: サン入力 → キャリア出力
+        inputSpeed = Math.abs(sunSpeed);
+        outputSpeed = Math.abs(carrierSpeed);
+      } else if (sunLocked) {
+        // 増速モード: リング入力 → キャリア出力
+        inputSpeed = Math.abs(ringSpeed);
+        outputSpeed = Math.abs(carrierSpeed);
+      } else if (carrierLocked) {
+        // 逆転モード: サン入力 → リング出力
+        inputSpeed = Math.abs(sunSpeed);
+        outputSpeed = Math.abs(ringSpeed);
+      } else {
+        // 直結モード: サンとリングが入力、キャリアが出力
+        inputSpeed = Math.abs(sunSpeed);
+        outputSpeed = Math.abs(carrierSpeed);
+      }
+      
+      if (outputSpeed > epsilon && inputSpeed > epsilon) {
+        const ratio = inputSpeed / outputSpeed;
         statRatio.textContent = ratio.toFixed(2) + ":1";
         statTorque.textContent = ratio.toFixed(2) + "x";
       } else {
@@ -732,6 +766,17 @@
     function recalculate() {
       solveKinematics();
       updateUI();
+      
+      // スライダーの値を強制的に更新（ロックされていない場合）
+      if (!sunLocked) {
+        sunSlider.value = sunSpeed;
+      }
+      if (!ringLocked) {
+        ringSlider.value = ringSpeed;
+      }
+      if (!carrierLocked) {
+        carSlider.value = carrierSpeed;
+      }
     }
 
     // ============================================================
