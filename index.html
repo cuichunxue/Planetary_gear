@@ -141,6 +141,11 @@
       <div class="chk"><input id="autoRotate" type="checkbox">自動回転</div>
     </div>
 
+    <div style="margin:12px 0">
+      <label>モーションブラー強度 <span class="val" id="blurTxt">85%</span></label>
+      <input id="blurSlider" type="range" min="0" max="95" step="5" value="85">
+    </div>
+
     <div class="btns">
       <button class="b1" onclick="toggleAnim()" id="toggleBtn">⏸️ 停止</button>
       <button class="b2" onclick="resetView()">📷 視点リセット</button>
@@ -170,6 +175,13 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <!-- ポストプロセッシング：モーションブラー・残像効果用 -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/AfterimagePass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
 
   <script>
     // ============================================================
@@ -221,6 +233,7 @@
     // Three.js オブジェクト
     // ============================================================
     let scene, camera, renderer, controls, axesHelper;
+    let composer, afterimagePass; // ポストプロセッシング用
     let sunMesh, ringMesh, carrierGroup;
     let planetMeshes = [];
     let carrierArms = [];
@@ -479,7 +492,23 @@
       ringAccentLight.decay = 2;
       ringAccentLight.distance = 12;
       scene.add(ringAccentLight);
-      
+
+      // ポストプロセッシング：モーションブラー（残像効果）
+      composer = new THREE.EffectComposer(renderer);
+
+      // 通常のレンダリングパス
+      const renderPass = new THREE.RenderPass(scene, camera);
+      composer.addPass(renderPass);
+
+      // 残像効果（モーションブラー）- 振動感を軽減
+      afterimagePass = new THREE.AfterimagePass(0.85); // 0.85 = 強めの残像効果
+      composer.addPass(afterimagePass);
+
+      // 最終出力パス
+      const copyPass = new THREE.ShaderPass(THREE.CopyShader);
+      copyPass.renderToScreen = true;
+      composer.addPass(copyPass);
+
       // グリッド
       const grid = new THREE.GridHelper(24, 24, 0x444444, 0x222222);
       grid.position.y = -2.5;
@@ -502,6 +531,7 @@
         camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(innerWidth, innerHeight);
+        composer.setSize(innerWidth, innerHeight); // コンポーザーもリサイズ
       });
     }
 
@@ -985,12 +1015,22 @@
       wireframeObjects.forEach(w => w.visible = e.target.checked);
     });
 
+    // モーションブラー強度調整
+    blurSlider.addEventListener("input", e => {
+      const value = parseFloat(e.target.value);
+      blurTxt.textContent = value + "%";
+      if (afterimagePass) {
+        afterimagePass.uniforms["damp"].value = value / 100;
+      }
+    });
+
     // ============================================================
-    // アニメーションループ（完全再構築版 + FPS監視）
+    // アニメーションループ（高度な安定化 + モーションブラー対応）
     // ============================================================
     let frameCount = 0;
     let fpsHistory = [];
     let lastFpsReport = 0;
+    let dtHistory = []; // dt履歴で平滑化
 
     function animate() {
       requestAnimationFrame(animate);
@@ -1004,6 +1044,7 @@
           lastTime = currentTime;
           isFirstFrame = false;
           dt = 1 / 60;
+          dtHistory = [];
           console.log(`[animate] 初回フレーム - lastTime初期化: ${lastTime.toFixed(2)}ms`);
         } else {
           // 通常フレームの処理
@@ -1023,12 +1064,16 @@
             lastFpsReport = currentTime;
           }
 
-          // dt の妥当性チェック（0.001秒〜0.1秒の範囲）
-          if (rawDt > 0 && rawDt < 0.1 && isFinite(rawDt)) {
-            dt = rawDt;
+          // dt の妥当性チェック（0.001秒〜0.05秒の範囲）- より厳格な範囲
+          if (rawDt > 0 && rawDt < 0.05 && isFinite(rawDt)) {
+            dtHistory.push(rawDt);
+            // 過去3フレームの移動平均で平滑化（振動軽減）
+            if (dtHistory.length > 3) dtHistory.shift();
+            dt = dtHistory.reduce((a, b) => a + b, 0) / dtHistory.length;
           } else {
             console.warn(`[animate] Frame ${frameCount}: 異常なdt検出 ${(rawDt * 1000).toFixed(2)}ms → 16.67ms(60FPS)に補正`);
             dt = 1 / 60;
+            dtHistory = []; // 異常検出時は履歴クリア
           }
         }
 
@@ -1092,7 +1137,7 @@
       }
 
       controls.update();
-      renderer.render(scene, camera);
+      composer.render(); // モーションブラー付きレンダリング
     }
 
     // ============================================================
