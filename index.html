@@ -490,11 +490,15 @@
       scene.add(ringAccentLight);
 
       // SMAA高品質アンチエイリアシング（ストロボ効果軽減）
+      console.log("[初期化] SMAA セットアップ開始");
+
       composer = new THREE.EffectComposer(renderer);
+      console.log("[初期化] EffectComposer 作成完了");
 
       // 通常のレンダリングパス
       const renderPass = new THREE.RenderPass(scene, camera);
       composer.addPass(renderPass);
+      console.log("[初期化] RenderPass 追加完了");
 
       // SMAAパス - エッジの滑らかさを向上（振動感を軽減）
       const pixelRatio = renderer.getPixelRatio();
@@ -504,6 +508,7 @@
       );
       smaaPass.renderToScreen = true;
       composer.addPass(smaaPass);
+      console.log(`[初期化] SMAAPass 追加完了 (解像度: ${window.innerWidth * pixelRatio}x${window.innerHeight * pixelRatio}, pixelRatio: ${pixelRatio})`);
 
       // グリッド
       const grid = new THREE.GridHelper(24, 24, 0x444444, 0x222222);
@@ -522,7 +527,14 @@
       controls.maxDistance = 25;
       
       buildGears();
-      
+
+      // 検証: セットアップが正しく完了したか確認
+      console.log("[検証] シーン初期化完了");
+      console.log(`[検証] レンダラー: ${renderer ? '✓' : '✗'}`);
+      console.log(`[検証] Composer: ${composer ? '✓' : '✗'}`);
+      console.log(`[検証] SMAAPass: ${smaaPass ? '✓' : '✗'}`);
+      console.log(`[検証] Composerパス数: ${composer.passes.length}`);
+
       window.addEventListener("resize", () => {
         camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
@@ -1022,11 +1034,18 @@
     let fpsHistory = [];
     let lastFpsReport = 0;
     let dtHistory = []; // dt履歴で平滑化
+    let renderVerified = false; // レンダリング検証フラグ
 
     function animate() {
       requestAnimationFrame(animate);
 
       if (running) {
+        // 初回レンダリング検証（1回のみ）
+        if (!renderVerified && frameCount === 0) {
+          console.log("[レンダリング検証] Composer使用: " + (composer ? "✓" : "✗"));
+          console.log("[レンダリング検証] SMAAPass有効: " + (smaaPass ? "✓" : "✗"));
+          renderVerified = true;
+        }
         const currentTime = performance.now();
         let dt = 1 / 60;
 
@@ -1084,6 +1103,15 @@
         // デバッグ: 100フレームごとにリングギヤの状態を出力
         if (frameCount % 100 === 0) {
           console.log(`[Frame ${frameCount}] Ring - Speed: ${ringSpeed.toFixed(2)} RPM, Delta: ${(ringDelta * 180 / Math.PI).toFixed(4)}°, Angle: ${(ringAngle * 180 / Math.PI).toFixed(2)}°, dt: ${(dt * 1000).toFixed(2)}ms`);
+        }
+
+        // Willis式検証: 300フレーム（約5秒）ごとに検証
+        if (frameCount % 300 === 0 && frameCount > 0) {
+          const lhs = sunSpeed * Zs + ringSpeed * Zr;
+          const rhs = carrierSpeed * (Zs + Zr);
+          const error = Math.abs(lhs - rhs);
+          const status = error < 0.1 ? '✓ 成立' : '✗ 不成立';
+          console.log(`[Willis検証] ${status} - LHS: ${lhs.toFixed(3)}, RHS: ${rhs.toFixed(3)}, 誤差: ${error.toFixed(6)}`);
         }
 
         // メッシュに回転を適用
