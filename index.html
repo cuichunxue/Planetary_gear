@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>3D プラネタリギヤ - 物理正確版</title>
+  <title>3D プラネタリギヤシミュレーター - 物理正確版</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{
@@ -71,6 +71,10 @@
       border-radius:8px;padding:10px;margin-top:10px;font-size:12px;
       font-family:'Courier New',monospace;color:#ffd700;
     }
+    @media (max-width: 1200px) {
+      .panel{width:320px}
+      .right{width:280px}
+    }
   </style>
 </head>
 <body>
@@ -78,7 +82,7 @@
 
   <div class="ui">
     <div class="panel">
-      <div class="title">⚙️ 3D プラネタリギヤ - 物理正確版</div>
+      <div class="title">⚙️ 3D プラネタリギヤシミュレーター</div>
       <div class="sub">インボリュート歯形 / Willis式運動学 / 完全噛み合い保証</div>
 
 ```
@@ -624,14 +628,25 @@
       if (lockCount === 1) {
         if (ringLocked) {
           // リング固定（最も一般的な減速機）
+          // ωs·Zs = ωc·(Zs + Zr)
           // ωc = (ωs·Zs) / (Zs + Zr)
-          carrierSpeed = (sunSpeed * Zs) / (Zs + Zr);
+          if (lastChanged === "sun") {
+            carrierSpeed = (sunSpeed * Zs) / (Zs + Zr);
+          } else {
+            sunSpeed = (carrierSpeed * (Zs + Zr)) / Zs;
+          }
         } else if (sunLocked) {
           // サン固定（増速機）
+          // ωr·Zr = ωc·(Zs + Zr)
           // ωc = (ωr·Zr) / (Zs + Zr)
-          carrierSpeed = (ringSpeed * Zr) / (Zs + Zr);
+          if (lastChanged === "ring") {
+            carrierSpeed = (ringSpeed * Zr) / (Zs + Zr);
+          } else {
+            ringSpeed = (carrierSpeed * (Zs + Zr)) / Zr;
+          }
         } else if (carrierLocked) {
           // キャリア固定（方向転換機）
+          // ωs·Zs + ωr·Zr = 0
           // ωr = -(ωs·Zs) / Zr
           if (lastChanged === "sun") {
             ringSpeed = -(sunSpeed * Zs) / Zr;
@@ -640,9 +655,25 @@
           }
         }
       } else {
-        // ロックなし → Willis式から計算
-        // ωc = (ωs·Zs + ωr·Zr) / (Zs + Zr)
-        carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
+        // ロックなし → Willis式から残りを計算
+        if (lastChanged === "sun" && ringSpeed !== 0) {
+          // サンとリングから キャリアを計算
+          carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
+        } else if (lastChanged === "ring" && sunSpeed !== 0) {
+          // リングとサンから キャリアを計算
+          carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
+        } else if (lastChanged === "car") {
+          // キャリアから他を計算（どちらか一方を固定）
+          // デフォルトでリングを計算
+          if (sunSpeed !== 0) {
+            ringSpeed = (carrierSpeed * (Zs + Zr) - sunSpeed * Zs) / Zr;
+          } else {
+            sunSpeed = (carrierSpeed * (Zs + Zr) - ringSpeed * Zr) / Zs;
+          }
+        } else {
+          // デフォルト: キャリアを計算
+          carrierSpeed = (sunSpeed * Zs + ringSpeed * Zr) / (Zs + Zr);
+        }
       }
     }
 
@@ -673,6 +704,10 @@
       const epsilon = 0.1;
       if (Math.abs(carrierSpeed) > epsilon && Math.abs(sunSpeed) > epsilon) {
         const ratio = Math.abs(sunSpeed / carrierSpeed);
+        statRatio.textContent = ratio.toFixed(2) + ":1";
+        statTorque.textContent = ratio.toFixed(2) + "x";
+      } else if (Math.abs(ringSpeed) > epsilon && Math.abs(carrierSpeed) > epsilon) {
+        const ratio = Math.abs(ringSpeed / carrierSpeed);
         statRatio.textContent = ratio.toFixed(2) + ":1";
         statTorque.textContent = ratio.toFixed(2) + "x";
       } else {
@@ -714,6 +749,7 @@
           modeBadge.style.color = "#fff";
           sunSpeed = 60;
           ringSpeed = 0;
+          carrierSpeed = 0;
           ringLocked = true;
           ringLock.checked = true;
           ringSlider.disabled = true;
@@ -726,6 +762,7 @@
           modeBadge.style.color = "#fff";
           sunSpeed = 0;
           ringSpeed = 60;
+          carrierSpeed = 0;
           sunLocked = true;
           sunLock.checked = true;
           sunSlider.disabled = true;
@@ -736,7 +773,9 @@
           modeBadge.textContent = "直結モード";
           modeBadge.style.background = "linear-gradient(135deg,#ffd700 0%,#ffed4e 100%)";
           modeBadge.style.color = "#333";
-          sunSpeed = ringSpeed = 60;
+          sunSpeed = 60;
+          ringSpeed = 60;
+          carrierSpeed = 0;
           lastChanged = "sun";
           break;
           
@@ -745,6 +784,7 @@
           modeBadge.style.background = "linear-gradient(135deg,#667eea 0%,#764ba2 100%)";
           modeBadge.style.color = "#fff";
           sunSpeed = 0;
+          ringSpeed = 0;
           carrierSpeed = 60;
           sunLocked = true;
           sunLock.checked = true;
