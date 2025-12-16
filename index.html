@@ -520,35 +520,29 @@
       sunMesh.add(sunWire);
       wireframeObjects.push(sunWire);
       
-      // リングギヤ（視認性を改善したマテリアル）
+      // リングギヤ（元の設定に戻す）
       const ringShape = buildInvoluteGearProfile(rRing, Zr, true);
       const ringGeo = extrudeGear(ringShape);
-
-      // ジオメトリを最適化
-      ringGeo.computeVertexNormals();  // 法線を再計算
-      ringGeo.normalizeNormals();      // 法線を正規化
 
       ringMesh = new THREE.Mesh(
         ringGeo,
         new THREE.MeshStandardMaterial({
-          color: 0x9b59b6,        // より鮮やかな紫色
-          metalness: 0.6,         // メタリック感を強調
-          roughness: 0.2,         // 滑らかな表面
-          side: THREE.DoubleSide,
-          flatShading: false      // スムーズシェーディング
+          color: 0x8b4789,         // 元の紫色
+          metalness: 0.35,         // 元のメタルネス
+          roughness: 0.35,         // 元の粗さ
+          side: THREE.DoubleSide
         })
       );
       ringMesh.castShadow = true;
       ringMesh.receiveShadow = true;
       scene.add(ringMesh);
-      
+
       const ringWire = new THREE.LineSegments(
         new THREE.EdgesGeometry(ringGeo),
         new THREE.LineBasicMaterial({
           color: 0xffffff,
           transparent: true,
-          opacity: 0.5,  // ワイヤーフレームを少し濃くして視認性向上
-          linewidth: 2
+          opacity: 0.3  // 元の透明度
         })
       );
       ringMesh.add(ringWire);
