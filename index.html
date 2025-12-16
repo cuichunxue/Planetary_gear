@@ -214,7 +214,8 @@
 
     let running = true;
     let lastChanged = "sun";
-    let lastTime = performance.now(); // アニメーション時間管理用
+    let lastTime = 0; // アニメーション時間管理用（初回に設定）
+    let isFirstFrame = true; // 初回フレーム検出用
 
     // ============================================================
     // Three.js オブジェクト
@@ -541,6 +542,21 @@
       );
       ringMesh.add(ringWire);
       wireframeObjects.push(ringWire);
+
+      // リングギヤの回転を視覚化するマーカーを追加
+      const markerGeo = new THREE.BoxGeometry(0.3, gearThickness * 1.2, 0.3);
+      const markerMat = new THREE.MeshStandardMaterial({
+        color: 0xff0000,  // 赤色
+        emissive: 0xff0000,
+        emissiveIntensity: 0.5,
+        metalness: 0.8,
+        roughness: 0.2
+      });
+      const marker = new THREE.Mesh(markerGeo, markerMat);
+      marker.position.set(rRing, 0, 0); // リングの外側に配置
+      ringMesh.add(marker);
+
+      console.log(`[buildGears] リングギヤにマーカー追加 - 位置: (${rRing}, 0, 0)`);
       
       // キャリアとプラネットギヤ
       carrierGroup = new THREE.Group();
@@ -703,7 +719,7 @@
       }
 
       // デバッグ: 計算結果をコンソールに出力
-      console.log(`[solveKinematics] Sun: ${sunSpeed.toFixed(2)}, Ring: ${ringSpeed.toFixed(2)}, Carrier: ${carrierSpeed.toFixed(2)}`);
+      console.log(`[solveKinematics] ✓ Sun: ${sunSpeed.toFixed(2)} RPM, Ring: ${ringSpeed.toFixed(2)} RPM, Carrier: ${carrierSpeed.toFixed(2)} RPM`);
     }
 
     function calculatePlanetSelfRotation() {
@@ -806,7 +822,14 @@
       sunLock.checked = ringLock.checked = carLock.checked = false;
       sunSlider.disabled = ringSlider.disabled = carSlider.disabled = false;
 
-      console.log(`[setMode] モード切替: ${mode}`);
+      // 角度とフレームカウンタをリセット（モード切替時の残留を防止）
+      sunAngle = 0;
+      ringAngle = 0;
+      carrierAngle = 0;
+      frameCount = 0;
+      isFirstFrame = true;
+
+      console.log(`[setMode] モード切替: ${mode} - 角度とカウンタをリセット`);
 
       switch (mode) {
         case 'reduction':
@@ -933,36 +956,65 @@
     });
 
     // ============================================================
-    // アニメーションループ
+    // アニメーションループ（完全再構築版）
     // ============================================================
+    let frameCount = 0; // デバッグ用フレームカウンタ
+
     function animate() {
       requestAnimationFrame(animate);
 
       if (running) {
-        // 実際の経過時間を使用（より正確なアニメーション）
         const currentTime = performance.now();
-        let dt = (currentTime - lastTime) / 1000; // ミリ秒から秒に変換
-        lastTime = currentTime;
+        let dt = 1 / 60; // デフォルトは60FPS
 
-        // 異常な dt 値を防ぐ（初回フレーム、タブ切替、停止/再開時の対策）
-        const originalDt = dt;
-        if (dt > 0.1 || dt < 0 || !isFinite(dt)) {
-          dt = 1 / 60; // 60 FPS 相当にフォールバック
-          console.warn(`[animate] 異常なdt値を検出: ${originalDt.toFixed(4)}秒 → ${dt.toFixed(4)}秒に修正`);
+        // 初回フレームの処理
+        if (isFirstFrame) {
+          lastTime = currentTime;
+          isFirstFrame = false;
+          dt = 1 / 60; // 初回は固定値を使用
+          console.log(`[animate] 初回フレーム - lastTime初期化: ${lastTime.toFixed(2)}ms`);
+        } else {
+          // 通常フレームの処理
+          const rawDt = (currentTime - lastTime) / 1000;
+          lastTime = currentTime;
+
+          // dt の妥当性チェック（0.001秒〜0.1秒の範囲）
+          if (rawDt > 0 && rawDt < 0.1 && isFinite(rawDt)) {
+            dt = rawDt;
+          } else {
+            console.warn(`[animate] Frame ${frameCount}: 異常なdt検出 ${(rawDt * 1000).toFixed(2)}ms → 16.67ms(60FPS)に補正`);
+            dt = 1 / 60;
+          }
         }
 
         // RPMからラジアン/秒に変換: RPM * (2π / 60) = rad/s
         const rpm2rad = (2 * Math.PI) / 60;
 
+        // 角度の変化量を計算
+        const sunDelta = sunSpeed * rpm2rad * dt;
+        const ringDelta = ringSpeed * rpm2rad * dt;
+        const carrierDelta = carrierSpeed * rpm2rad * dt;
+
         // 角度を更新（積分）
-        sunAngle += sunSpeed * rpm2rad * dt;
-        ringAngle += ringSpeed * rpm2rad * dt;
-        carrierAngle += carrierSpeed * rpm2rad * dt;
+        sunAngle += sunDelta;
+        ringAngle += ringDelta;
+        carrierAngle += carrierDelta;
+
+        // デバッグ: 100フレームごとにリングギヤの状態を出力
+        if (frameCount % 100 === 0) {
+          console.log(`[Frame ${frameCount}] Ring - Speed: ${ringSpeed.toFixed(2)} RPM, Delta: ${(ringDelta * 180 / Math.PI).toFixed(4)}°, Angle: ${(ringAngle * 180 / Math.PI).toFixed(2)}°, dt: ${(dt * 1000).toFixed(2)}ms`);
+        }
 
         // メッシュに回転を適用
-        if (sunMesh) sunMesh.rotation.y = sunAngle;
-        if (ringMesh) ringMesh.rotation.y = ringAngle;
-        if (carrierGroup) carrierGroup.rotation.y = carrierAngle;
+        if (sunMesh) {
+          sunMesh.rotation.y = sunAngle;
+        }
+        if (ringMesh) {
+          ringMesh.rotation.y = ringAngle;
+        }
+        if (carrierGroup) {
+          carrierGroup.rotation.y = carrierAngle;
+        }
 
         // プラネットギヤの自転（完全噛み合い条件）
         // ωp_self = -(Zs / Zp) · (ωs - ωc)
@@ -972,9 +1024,12 @@
           const phaseOffset = (i / numPlanets) * 2 * Math.PI;
           planet.rotation.y = planetSelfRotation - phaseOffset * (Zs / Zp);
         });
+
+        frameCount++;
       } else {
-        // アニメーション停止中は lastTime を更新して、再開時に dt が巨大にならないようにする
-        lastTime = performance.now();
+        // アニメーション停止中は初回フラグをセットして、再開時に正しく初期化
+        isFirstFrame = true;
+        frameCount = 0;
       }
 
       // 表示制御
