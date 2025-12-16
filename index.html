@@ -256,9 +256,9 @@
         const innerRadius = pitchRadius - addendum;
         const valleyRadius = pitchRadius + dedendum;
         
-        // 外周円
-        for (let i = 0; i <= 64; i++) {
-          const angle = (i / 64) * 2 * Math.PI;
+        // 外周円（高品質化：セグメント数を増加）
+        for (let i = 0; i <= 128; i++) {
+          const angle = (i / 128) * 2 * Math.PI;
           const x = Math.cos(angle) * valleyRadius;
           const y = Math.sin(angle) * valleyRadius;
           if (i === 0) shape.moveTo(x, y);
@@ -281,11 +281,11 @@
             hole.lineTo(Math.cos(a) * pitchRadius, Math.sin(a) * pitchRadius);
           }
           
-          // 左フランク（簡略インボリュート）
+          // 左フランク（高品質インボリュート：セグメント増加）
           const t0 = tFromRadius(baseRadius, Math.max(baseRadius, innerRadius));
           const t1 = tFromRadius(baseRadius, pitchRadius);
-          for (let j = 0; j <= 8; j++) {
-            const t = t0 + (t1 - t0) * (j / 8);
+          for (let j = 0; j <= 12; j++) {
+            const t = t0 + (t1 - t0) * (j / 12);
             const p = involutePoint(baseRadius, t);
             const angle = Math.atan2(p.y, p.x) + baseAngle - angularPitch * 0.20;
             hole.lineTo(Math.cos(angle) * p.length(), Math.sin(angle) * p.length());
@@ -299,9 +299,9 @@
             hole.lineTo(Math.cos(a) * innerRadius, Math.sin(a) * innerRadius);
           }
           
-          // 右フランク
-          for (let j = 8; j >= 0; j--) {
-            const t = t0 + (t1 - t0) * (j / 8);
+          // 右フランク（高品質インボリュート：セグメント増加）
+          for (let j = 12; j >= 0; j--) {
+            const t = t0 + (t1 - t0) * (j / 12);
             const p = involutePoint(baseRadius, t);
             const angle = Math.atan2(p.y, p.x) + baseAngle + angularPitch * 0.20;
             hole.lineTo(Math.cos(angle) * p.length(), Math.sin(angle) * p.length());
@@ -409,11 +409,13 @@
         bevelEnabled: true,
         bevelThickness: 0.02,
         bevelSize: 0.02,
-        bevelSegments: 3
+        bevelSegments: 5,      // 高品質ベベル
+        curveSegments: 24      // カーブセグメント増加
       });
       geometry.rotateX(Math.PI / 2);
       geometry.center();
       geometry.computeVertexNormals();
+      geometry.normalizeNormals();
       return geometry;
     }
 
@@ -430,11 +432,18 @@
       camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
       camera.position.set(6, 4, 8);
       
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      // 高品質レンダラー設定
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: "high-performance",
+        stencil: false
+      });
       renderer.setSize(innerWidth, innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setPixelRatio(window.devicePixelRatio); // フルデバイスピクセル比
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
       container.appendChild(renderer.domElement);
       
       // ライティング
@@ -443,13 +452,15 @@
       const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
       keyLight.position.set(8, 12, 8);
       keyLight.castShadow = true;
-      keyLight.shadow.mapSize.set(2048, 2048);
+      keyLight.shadow.mapSize.set(4096, 4096); // 高解像度シャドウマップ
       keyLight.shadow.camera.near = 0.5;
       keyLight.shadow.camera.far = 50;
       keyLight.shadow.camera.left = -10;
       keyLight.shadow.camera.right = 10;
       keyLight.shadow.camera.top = 10;
       keyLight.shadow.camera.bottom = -10;
+      keyLight.shadow.bias = -0.0001; // シャドウアーティファクト軽減
+      keyLight.shadow.radius = 2; // ソフトシャドウ
       scene.add(keyLight);
       
       const fillLight = new THREE.DirectionalLight(0x66aaff, 0.4);
@@ -459,6 +470,15 @@
       const rimLight = new THREE.PointLight(0xffd700, 0.9, 35);
       rimLight.position.set(0, 8, 0);
       scene.add(rimLight);
+
+      // リングギヤ専用アクセントライト（回転を視覚化）
+      const ringAccentLight = new THREE.SpotLight(0xffffff, 0.8);
+      ringAccentLight.position.set(4, 2, 0);
+      ringAccentLight.angle = Math.PI / 4;
+      ringAccentLight.penumbra = 0.3;
+      ringAccentLight.decay = 2;
+      ringAccentLight.distance = 12;
+      scene.add(ringAccentLight);
       
       // グリッド
       const grid = new THREE.GridHelper(24, 24, 0x444444, 0x222222);
@@ -524,13 +544,18 @@
       const ringShape = buildInvoluteGearProfile(rRing, Zr, true);
       const ringGeo = extrudeGear(ringShape);
 
+      // リングギヤのジオメトリ品質向上
+      ringGeo.computeVertexNormals();
+      ringGeo.normalizeNormals();
+
       ringMesh = new THREE.Mesh(
         ringGeo,
         new THREE.MeshStandardMaterial({
           color: 0x8b4789,         // 元の紫色
           metalness: 0.35,         // 元のメタルネス
           roughness: 0.35,         // 元の粗さ
-          side: THREE.DoubleSide
+          side: THREE.DoubleSide,
+          flatShading: false       // スムーズシェーディング
         })
       );
       ringMesh.castShadow = true;
@@ -538,11 +563,12 @@
       scene.add(ringMesh);
 
       const ringWire = new THREE.LineSegments(
-        new THREE.EdgesGeometry(ringGeo),
+        new THREE.EdgesGeometry(ringGeo, 15), // エッジ検出の閾値を調整
         new THREE.LineBasicMaterial({
           color: 0xffffff,
           transparent: true,
-          opacity: 0.3  // 元の透明度
+          opacity: 0.4,            // ワイヤーフレームを若干明るく
+          linewidth: 1
         })
       );
       ringMesh.add(ringWire);
